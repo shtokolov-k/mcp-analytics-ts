@@ -366,6 +366,78 @@ describe('instrumentServer', () => {
       expect(mcpServer.setResourceRequestHandlers).not.toHaveBeenCalled();
       expect(mcpServer.setPromptRequestHandlers).not.toHaveBeenCalled();
     });
+
+    it('should NOT remove completion/complete handler during refresh (no reinit path)', () => {
+      const mcpServer = createMockMcpServer();
+      mcpServer._toolHandlersInitialized = true;
+
+      // Pre-register a completion handler that no reinit function re-registers
+      const completionHandler = vi.fn();
+      mcpServer.server._handlers.set('completion/complete', completionHandler);
+
+      instrumentServer(mcpServer, tracker);
+
+      // completion/complete must survive (was being dropped before the fix)
+      expect(mcpServer.server._handlers.get('completion/complete')).toBe(completionHandler);
+      expect(mcpServer.setToolRequestHandlers).toHaveBeenCalled();
+    });
+  });
+
+  describe('captureArguments', () => {
+    it('should capture only argument keys by default (no raw values)', async () => {
+      const server = createMockServer();
+      instrumentServer(server, tracker);
+
+      const handler = vi.fn().mockResolvedValue({ content: [] });
+      server.setRequestHandler(createMockSchema('tools/call'), handler);
+
+      await server._handlers.get('tools/call')!(
+        { method: 'tools/call', params: { name: 'my_tool', arguments: { query: 'secret', token: 'abc' } } },
+        {},
+      );
+      await tick();
+
+      const invocationBody = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+      expect(invocationBody.metadata.input).toEqual({ argument_keys: ['query', 'token'] });
+      expect(invocationBody.metadata.input).not.toHaveProperty('arguments');
+    });
+
+    it('should capture raw arguments when captureArguments=true', async () => {
+      const server = createMockServer();
+      instrumentServer(server, tracker, { captureArguments: true });
+
+      const handler = vi.fn().mockResolvedValue({ content: [] });
+      server.setRequestHandler(createMockSchema('tools/call'), handler);
+
+      await server._handlers.get('tools/call')!(
+        { method: 'tools/call', params: { name: 'my_tool', arguments: { query: 'shoes' } } },
+        {},
+      );
+      await tick();
+
+      const invocationBody = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+      expect(invocationBody.metadata.input).toHaveProperty('query', 'shoes');
+      expect(invocationBody.metadata.input).toHaveProperty('arguments', { query: 'shoes' });
+    });
+  });
+
+  describe('flush', () => {
+    it('should await in-flight fire-and-forget tracking requests', async () => {
+      const server = createMockServer();
+      instrumentServer(server, tracker);
+
+      const handler = vi.fn().mockResolvedValue({ content: [] });
+      server.setRequestHandler(createMockSchema('tools/call'), handler);
+
+      await server._handlers.get('tools/call')!(
+        { method: 'tools/call', params: { name: 'my_tool' } },
+        {},
+      );
+
+      // No tick(): flush must drain both invocation + success POSTs itself
+      await tracker.flush();
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('methods filtering', () => {

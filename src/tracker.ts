@@ -8,6 +8,7 @@ const DEFAULT_ENDPOINT = 'https://dersubrqatbvvmzwkmsj.supabase.co/functions/v1/
 export class MCPTracker {
   private client: APIClient;
   private config: Required<MCPTrackerConfig>;
+  private pending = new Set<Promise<TrackingResult>>();
 
   constructor(config: MCPTrackerConfig = {}) {
     const apiKey = config.apiKey || process.env.METATUNER_API_KEY;
@@ -30,9 +31,24 @@ export class MCPTracker {
   }
 
   /**
-   * Track an MCP event
+   * Track an MCP event.
+   *
+   * The returned promise is also registered internally so that fire-and-forget
+   * callers can be awaited later via flush(). Never rejects.
    */
-  async track(
+  track(
+    toolName: string,
+    eventType: MCPEventType,
+    metadata?: MCPMetadata,
+    durationMs?: number
+  ): Promise<TrackingResult> {
+    const promise = this.doTrack(toolName, eventType, metadata, durationMs);
+    this.pending.add(promise);
+    void promise.finally(() => this.pending.delete(promise));
+    return promise;
+  }
+
+  private async doTrack(
     toolName: string,
     eventType: MCPEventType,
     metadata?: MCPMetadata,
@@ -88,6 +104,19 @@ export class MCPTracker {
    */
   get isDebug(): boolean {
     return this.config.debug;
+  }
+
+  /**
+   * Await all in-flight (fire-and-forget) tracking requests.
+   *
+   * Call before a short-lived/serverless process exits, otherwise pending
+   * analytics POSTs may be dropped. Safe to call repeatedly; resolves when no
+   * tracking requests are outstanding.
+   */
+  async flush(): Promise<void> {
+    while (this.pending.size > 0) {
+      await Promise.allSettled([...this.pending]);
+    }
   }
 
   /**

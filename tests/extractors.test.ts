@@ -14,11 +14,19 @@ describe('buildExtractor', () => {
       expect(extractor.extractName({ method: 'tools/call' })).toBe('tools/call');
     });
 
-    it('should extract invocation metadata with query argument', () => {
+    it('should capture only argument keys by default (no raw values)', () => {
       const meta = extractor.extractInvocationMetadata({
         method: 'tools/call',
         params: { name: 'search', arguments: { query: 'shoes', limit: 10 } },
       });
+      expect(meta).toEqual({ input: { argument_keys: ['query', 'limit'] } });
+    });
+
+    it('should extract raw arguments + query when captureArguments=true', () => {
+      const meta = extractor.extractInvocationMetadata({
+        method: 'tools/call',
+        params: { name: 'search', arguments: { query: 'shoes', limit: 10 } },
+      }, true);
       expect(meta).toEqual({
         input: {
           query: 'shoes',
@@ -27,11 +35,11 @@ describe('buildExtractor', () => {
       });
     });
 
-    it('should extract "q" as query alias', () => {
+    it('should extract "q" as query alias when captureArguments=true', () => {
       const meta = extractor.extractInvocationMetadata({
         method: 'tools/call',
         params: { name: 'search', arguments: { q: 'shoes' } },
-      });
+      }, true);
       expect(meta?.input).toHaveProperty('query', 'shoes');
     });
 
@@ -39,7 +47,7 @@ describe('buildExtractor', () => {
       const meta = extractor.extractInvocationMetadata({
         method: 'tools/call',
         params: { name: 'search', arguments: {} },
-      });
+      }, true);
       expect(meta).toBeUndefined();
     });
 
@@ -105,11 +113,19 @@ describe('buildExtractor', () => {
         .toBe('greeting');
     });
 
-    it('should extract arguments in invocation metadata', () => {
+    it('should capture only argument keys by default', () => {
       const meta = extractor.extractInvocationMetadata({
         method: 'prompts/get',
         params: { name: 'greeting', arguments: { language: 'en' } },
       });
+      expect(meta).toEqual({ input: { argument_keys: ['language'] } });
+    });
+
+    it('should extract raw arguments when captureArguments=true', () => {
+      const meta = extractor.extractInvocationMetadata({
+        method: 'prompts/get',
+        params: { name: 'greeting', arguments: { language: 'en' } },
+      }, true);
       expect(meta).toEqual({ input: { arguments: { language: 'en' } } });
     });
 

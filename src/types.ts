@@ -320,6 +320,15 @@ export interface InstrumentOptions {
    * Useful for extracting session IDs or user context from every request.
    */
   getGlobalMetadata?: MCPRequestMetadataExtractor;
+
+  /**
+   * Capture raw tool/prompt argument VALUES (and the `query`/`q` value) in
+   * invocation metadata. Default: false — only argument key names are captured,
+   * never the values, because arguments may contain user PII, secrets, or
+   * tokens that would otherwise be sent to the analytics endpoint.
+   * Set true only when you control the data and accept shipping raw values.
+   */
+  captureArguments?: boolean;
 }
 
 /**

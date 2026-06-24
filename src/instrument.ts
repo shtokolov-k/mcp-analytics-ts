@@ -93,6 +93,12 @@ export function instrumentServer(
         buildInstrumentedHandler(method as MCPMethod, handler, tracker, options, debug),
       );
     } else {
+      if (method === undefined && schema && typeof schema === 'object') {
+        // Object schema we couldn't parse: SDK/Zod shape likely changed.
+        // Handler is left untracked silently otherwise — warn in debug mode.
+        debugLog(debug, '[instrument] Could not extract MCP method from schema; ' +
+          'handler left untracked (SDK/Zod schema shape may have changed).');
+      }
       originalSetRequestHandler(schema, handler);
     }
   };
@@ -162,6 +168,7 @@ function buildInstrumentedHandler(
 ): MCPRawHandler {
   const extractor = buildExtractor(method);
   const excludeSet = new Set<string>(options.exclude ?? []);
+  const captureArguments = options.captureArguments ?? false;
 
   return async function instrumentedHandler(
     request: MCPRawRequest,
@@ -181,7 +188,7 @@ function buildInstrumentedHandler(
     // Build invocation metadata
     const invocationMetadata = safeExtractMetadata(debug, eventName, 'invocation', () => {
       const globalMeta = options.getGlobalMetadata?.(request);
-      const defaultMeta = extractor.extractInvocationMetadata(request);
+      const defaultMeta = extractor.extractInvocationMetadata(request, captureArguments);
       const overrideMeta = override?.getMetadata?.(request);
       return mergeMetadata(globalMeta, defaultMeta, overrideMeta);
     });
@@ -291,7 +298,17 @@ function refreshExistingHandlers(
   // Only remove and re-register if we confirmed at least one reinit function exists
   if (reinitPairs.length === 0) return;
 
-  for (const method of trackedMethods) {
+  // Only remove handlers that a reinit path will re-register. Methods with no
+  // reinit (e.g. completion/complete, registered outside these three groups)
+  // must NOT be removed, or they would be lost permanently.
+  const methodsToRefresh = new Set<string>();
+  for (const { guard } of reinitPairs) {
+    for (const m of GUARD_METHODS[guard]) {
+      if (trackedMethods.has(m)) methodsToRefresh.add(m);
+    }
+  }
+
+  for (const method of methodsToRefresh) {
     try {
       server.removeRequestHandler?.(method);
     } catch {
@@ -304,3 +321,10 @@ function refreshExistingHandlers(
     reinit();
   }
 }
+
+/** Maps each McpServer v2 init guard to the methods its reinit re-registers. */
+const GUARD_METHODS: Record<string, MCPMethod[]> = {
+  _toolHandlersInitialized: ['tools/call', 'tools/list'],
+  _resourceHandlersInitialized: ['resources/read', 'resources/list'],
+  _promptHandlersInitialized: ['prompts/get', 'prompts/list'],
+};

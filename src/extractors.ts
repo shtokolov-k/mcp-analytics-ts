@@ -19,8 +19,15 @@ export interface MethodExtractor {
   /** Derives the event name used for tracking (tool name, URI, prompt name, etc.) */
   extractName(request: MCPRawRequest): string;
 
-  /** Extracts metadata from the request at invocation time. */
-  extractInvocationMetadata(request: MCPRawRequest): MCPMetadata | undefined;
+  /**
+   * Extracts metadata from the request at invocation time.
+   * @param captureArguments When true, raw argument values may be included.
+   *   When false (default), only non-sensitive shape (key names) is captured.
+   */
+  extractInvocationMetadata(
+    request: MCPRawRequest,
+    captureArguments?: boolean,
+  ): MCPMetadata | undefined;
 
   /** Extracts metadata from the successful response. */
   extractOutputMetadata(
@@ -72,9 +79,15 @@ const toolsCallExtractor: MethodExtractor = {
     return request.params?.name ?? 'tools/call';
   },
 
-  extractInvocationMetadata(request) {
+  extractInvocationMetadata(request, captureArguments) {
     const args = request.params?.arguments;
     if (!args || Object.keys(args).length === 0) return undefined;
+
+    // Default: capture only the shape (key names), never raw values — they
+    // may carry user PII/secrets that must not be shipped to analytics.
+    if (!captureArguments) {
+      return { input: { argument_keys: Object.keys(args) } };
+    }
 
     const queryValue =
       typeof args['query'] === 'string' ? args['query'] :
@@ -152,9 +165,12 @@ const promptsGetExtractor: MethodExtractor = {
     return request.params?.name ?? 'prompts/get';
   },
 
-  extractInvocationMetadata(request) {
+  extractInvocationMetadata(request, captureArguments) {
     const args = request.params?.arguments;
     if (!args || Object.keys(args).length === 0) return undefined;
+    if (!captureArguments) {
+      return { input: { argument_keys: Object.keys(args) } };
+    }
     return { input: { arguments: args } };
   },
 
