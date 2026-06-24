@@ -27,6 +27,16 @@ pnpm add @metatuner/mcp-analytics-ts
 
 ## Quick Start
 
+### Set your API key
+
+The easiest way is to set the `METATUNER_API_KEY` environment variable:
+
+```bash
+export METATUNER_API_KEY="your-api-key-here"
+```
+
+The tracker will pick it up automatically — no need to pass it in code.
+
 ### Automatic Tracking (Recommended)
 
 Use the `wrap()` method to automatically track invocation, success, and failure events:
@@ -34,9 +44,8 @@ Use the `wrap()` method to automatically track invocation, success, and failure 
 ```typescript
 import { createMCPTracker } from '@metatuner/mcp-analytics-ts';
 
-const tracker = createMCPTracker({
-  apiKey: 'your-api-key-here',
-});
+// Reads METATUNER_API_KEY from env automatically
+const tracker = createMCPTracker();
 
 // Wrap your MCP tool function
 export const products_list = tracker.wrap(
@@ -65,9 +74,7 @@ For more control, track events manually:
 ```typescript
 import { createMCPTracker } from '@metatuner/mcp-analytics-ts';
 
-const tracker = createMCPTracker({
-  apiKey: 'your-api-key-here',
-});
+const tracker = createMCPTracker();
 
 async function myTool(params) {
   const start = Date.now();
@@ -103,13 +110,13 @@ async function myTool(params) {
 
 ## API Reference
 
-### `createMCPTracker(config)`
+### `createMCPTracker(config?)`
 
 Creates a new tracker instance.
 
 **Parameters:**
 
-- `config.apiKey` (string, required) - Your Metatuner API key
+- `config.apiKey` (string, optional) - Your Metatuner API key. Falls back to the `METATUNER_API_KEY` environment variable. An error is thrown if neither is provided.
 - `config.endpoint` (string, optional) - Custom endpoint URL (default: Metatuner backend)
 - `config.timeout` (number, optional) - Request timeout in milliseconds (default: 5000)
 - `config.retries` (number, optional) - Max retry attempts (default: 3)
@@ -155,13 +162,28 @@ Manually track an event.
 
 ## Configuration
 
+### API Key Resolution
+
+The API key is resolved in this order:
+
+1. `config.apiKey` passed directly
+2. `METATUNER_API_KEY` environment variable
+3. Throws an error if neither is set
+
+```typescript
+// Option 1: env var (recommended) — set METATUNER_API_KEY then:
+const tracker = createMCPTracker();
+
+// Option 2: explicit key
+const tracker = createMCPTracker({ apiKey: 'your-api-key' });
+```
+
 ### Debug Mode
 
 Enable debug logging to see what's happening:
 
 ```typescript
 const tracker = createMCPTracker({
-  apiKey: 'your-api-key',
   debug: true, // Logs all tracking attempts and errors
 });
 ```
@@ -172,7 +194,6 @@ Use a custom backend endpoint:
 
 ```typescript
 const tracker = createMCPTracker({
-  apiKey: 'your-api-key',
   endpoint: 'https://your-custom-endpoint.com/track',
 });
 ```
@@ -183,7 +204,6 @@ Customize retry behavior:
 
 ```typescript
 const tracker = createMCPTracker({
-  apiKey: 'your-api-key',
   retries: 5,      // Max 5 retry attempts
   timeout: 10000,  // 10 second timeout
 });
@@ -291,7 +311,7 @@ import type {
 import { createMCPTracker } from '@metatuner/mcp-analytics-ts';
 import type { MCPRichMetadata } from '@metatuner/mcp-analytics-ts';
 
-const tracker = createMCPTracker({ apiKey: 'your-api-key' });
+const tracker = createMCPTracker();
 
 const searchProducts = tracker.wrap(
   'search_products',

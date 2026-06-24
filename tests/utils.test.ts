@@ -24,6 +24,33 @@ describe('mergeMetadata', () => {
     const result = mergeMetadata(undefined, undefined);
     expect(result).toEqual({});
   });
+
+  it('should deep merge one level for object values', () => {
+    const result = mergeMetadata(
+      { input: { query: 'shoes', limit: 10 } },
+      { input: { brand: 'Nike' }, output: { count: 5 } },
+    );
+    expect(result).toEqual({
+      input: { query: 'shoes', limit: 10, brand: 'Nike' },
+      output: { count: 5 },
+    });
+  });
+
+  it('should overwrite scalar values from nested objects', () => {
+    const result = mergeMetadata(
+      { input: { query: 'shoes' } },
+      { input: { query: 'boots' } },
+    );
+    expect(result).toEqual({ input: { query: 'boots' } });
+  });
+
+  it('should not deep merge arrays', () => {
+    const result = mergeMetadata(
+      { tags: ['a', 'b'] },
+      { tags: ['c'] },
+    );
+    expect(result).toEqual({ tags: ['c'] });
+  });
 });
 
 describe('isRetryableError', () => {

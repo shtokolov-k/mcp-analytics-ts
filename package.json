@@ -48,6 +48,14 @@
     "url": "https://github.com/metatuner/mcp-analytics-ts/issues"
   },
   "homepage": "https://metatuner.ai",
+  "peerDependencies": {
+    "@modelcontextprotocol/sdk": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@modelcontextprotocol/sdk": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsup": "^8.0.0",

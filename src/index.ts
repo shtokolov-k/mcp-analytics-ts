@@ -15,4 +15,18 @@ export type {
   MCPOutputMetadata,
   MCPErrorMetadata,
   MCPRichMetadata,
+  // SDK instrumentation types
+  MCPMethod,
+  MCPRawRequest,
+  MCPRawHandler,
+  MCPServerLike,
+  MCPHighLevelServerLike,
+  AnyMCPServer,
+  InstrumentOptions,
+  InstrumentResult,
+  MCPHandlerOverride,
+  MCPRequestMetadataExtractor,
+  MCPResponseMetadataExtractor,
+  MCPErrorMetadataExtractor,
 } from './types';
+export type { MethodExtractor } from './extractors';

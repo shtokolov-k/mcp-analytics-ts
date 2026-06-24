@@ -1,9 +1,7 @@
 import { createMCPTracker } from '@metatuner/mcp-analytics-ts';
 
-// Initialize the tracker with your API key
-const tracker = createMCPTracker({
-  apiKey: 'your-api-key-here',
-});
+// Initialize the tracker — reads METATUNER_API_KEY from env automatically
+const tracker = createMCPTracker();
 
 // Example 1: Automatic tracking with wrap()
 export const products_list = tracker.wrap(

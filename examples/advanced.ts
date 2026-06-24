@@ -1,8 +1,7 @@
 import { createMCPTracker } from '@metatuner/mcp-analytics-ts';
 
-// Initialize tracker with custom configuration
+// Initialize tracker — API key is read from METATUNER_API_KEY env var by default
 const tracker = createMCPTracker({
-  apiKey: 'your-api-key-here',
   endpoint: 'https://custom.example.com/track', // Optional: use custom endpoint
   timeout: 10000,  // Optional: custom timeout (default: 5000ms)
   retries: 5,      // Optional: custom retry count (default: 3)

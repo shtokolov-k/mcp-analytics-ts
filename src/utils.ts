@@ -1,12 +1,29 @@
 import { MCPMetadata } from './types';
 
 /**
- * Deep merge multiple metadata objects into one
+ * Merge multiple metadata objects into one.
+ * Performs a one-level deep merge: top-level object values are spread-merged
+ * rather than overwritten, so { input: { a: 1 } } + { input: { b: 2 } }
+ * produces { input: { a: 1, b: 2 } }.
  */
 export function mergeMetadata(...metadatas: (MCPMetadata | undefined)[]): MCPMetadata {
   return metadatas.reduce<MCPMetadata>((acc, metadata) => {
     if (!metadata) return acc;
-    return { ...acc, ...metadata };
+    const result = { ...acc };
+    for (const key of Object.keys(metadata)) {
+      const accVal = acc[key];
+      const newVal = metadata[key];
+      if (
+        accVal && newVal &&
+        typeof accVal === 'object' && !Array.isArray(accVal) &&
+        typeof newVal === 'object' && !Array.isArray(newVal)
+      ) {
+        result[key] = { ...(accVal as Record<string, unknown>), ...(newVal as Record<string, unknown>) };
+      } else {
+        result[key] = newVal;
+      }
+    }
+    return result;
   }, {});
 }
 

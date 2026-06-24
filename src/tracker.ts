@@ -1,5 +1,6 @@
-import { MCPTrackerConfig, MCPEventType, MCPMetadata, WrapOptions, TrackingResult } from './types';
+import { MCPTrackerConfig, MCPEventType, MCPMetadata, WrapOptions, TrackingResult, AnyMCPServer, MCPHighLevelServerLike, InstrumentOptions, InstrumentResult } from './types';
 import { APIClient } from './client';
+import { instrumentServer } from './instrument';
 import { mergeMetadata, debugLog } from './utils';
 
 const DEFAULT_ENDPOINT = 'https://dersubrqatbvvmzwkmsj.supabase.co/functions/v1/track-mcp-event';
@@ -8,9 +9,17 @@ export class MCPTracker {
   private client: APIClient;
   private config: Required<MCPTrackerConfig>;
 
-  constructor(config: MCPTrackerConfig) {
+  constructor(config: MCPTrackerConfig = {}) {
+    const apiKey = config.apiKey || process.env.METATUNER_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        '[MCPTracker] API key is required. Either pass { apiKey } in config ' +
+        'or set the METATUNER_API_KEY environment variable.',
+      );
+    }
+
     this.config = {
-      apiKey: config.apiKey,
+      apiKey,
       endpoint: config.endpoint || DEFAULT_ENDPOINT,
       timeout: config.timeout ?? 5000,
       retries: config.retries ?? 3,
@@ -75,6 +84,13 @@ export class MCPTracker {
   }
 
   /**
+   * Whether debug logging is enabled.
+   */
+  get isDebug(): boolean {
+    return this.config.debug;
+  }
+
+  /**
    * Wrap a function with automatic MCP event tracking
    */
   wrap<TParams = any, TResult = any, TMeta = any>(
@@ -104,9 +120,11 @@ export class MCPTracker {
           }
         }
 
-        // Track invocation
+        // Track invocation (fire-and-forget)
         if (shouldTrackInvocation) {
-          await this.trackInvocation(toolName, invocationMetadata);
+          this.trackInvocation(toolName, invocationMetadata).catch(err =>
+            debugLog(this.config.debug, `Unhandled tracking error (invocation) for "${toolName}":`, err),
+          );
         }
 
         // Execute the function
@@ -123,9 +141,11 @@ export class MCPTracker {
           }
         }
 
-        // Track success
+        // Track success (fire-and-forget)
         const successMetadata = mergeMetadata(invocationMetadata, outputMetadata);
-        await this.trackSuccess(toolName, successMetadata, duration);
+        this.trackSuccess(toolName, successMetadata, duration).catch(err =>
+          debugLog(this.config.debug, `Unhandled tracking error (success) for "${toolName}":`, err),
+        );
 
         return result;
       } catch (error: any) {
@@ -141,9 +161,11 @@ export class MCPTracker {
           }
         }
 
-        // Track failure
+        // Track failure (fire-and-forget)
         const failureMetadata = mergeMetadata(invocationMetadata, errorMetadata);
-        await this.trackFailure(toolName, failureMetadata, duration);
+        this.trackFailure(toolName, failureMetadata, duration).catch(err =>
+          debugLog(this.config.debug, `Unhandled tracking error (failure) for "${toolName}":`, err),
+        );
 
         // Rethrow the original error
         if (rethrowErrors) {
@@ -155,11 +177,62 @@ export class MCPTracker {
       }
     };
   }
+
+  /**
+   * Instrument an existing MCP Server or McpServer instance with analytics.
+   *
+   * Monkey-patches setRequestHandler on the underlying Server so that all
+   * handlers registered now or in the future are wrapped with analytics.
+   * Calling this twice on the same server instance is a safe no-op.
+   *
+   * Supports both v1 (Server) and v2 (McpServer with .server property).
+   * Requires @modelcontextprotocol/sdk to be installed as a peer dependency.
+   *
+   * @param target - A McpServer (v2) or Server (v1) instance
+   * @param options - Tracking options: exclude list, per-tool overrides, extra methods
+   * @returns InstrumentResult with uninstrument() for cleanup
+   */
+  instrument(target: AnyMCPServer, options?: InstrumentOptions): InstrumentResult {
+    return instrumentServer(target, this, options, this.config.debug);
+  }
+
+  /**
+   * Create a new McpServer that is pre-instrumented with analytics tracking.
+   *
+   * Equivalent to creating a McpServer and calling instrument() on it.
+   * Requires @modelcontextprotocol/sdk v2 to be installed.
+   *
+   * @param info - Server implementation info { name, version }
+   * @param instrumentOptions - Analytics tracking options
+   * @returns The new McpServer instance (already instrumented). Cast to McpServer
+   *          from @modelcontextprotocol/sdk for full type access.
+   */
+  async createInstrumentedServer(
+    info: { name: string; version: string },
+    instrumentOptions?: InstrumentOptions,
+  ): Promise<MCPHighLevelServerLike> {
+    let McpServerClass: any;
+    try {
+      // Use a variable to prevent TypeScript from resolving the optional dependency
+      const sdkModule = '@modelcontextprotocol/sdk/server/mcp.js';
+      const sdk = await import(/* webpackIgnore: true */ sdkModule);
+      McpServerClass = sdk.McpServer;
+    } catch {
+      throw new Error(
+        '[MCPTracker] createInstrumentedServer() requires @modelcontextprotocol/sdk. ' +
+        'Install it with: npm install @modelcontextprotocol/sdk',
+      );
+    }
+
+    const mcpServer = new McpServerClass(info);
+    this.instrument(mcpServer, instrumentOptions);
+    return mcpServer;
+  }
 }
 
 /**
  * Factory function to create an MCPTracker instance
  */
-export function createMCPTracker(config: MCPTrackerConfig): MCPTracker {
+export function createMCPTracker(config: MCPTrackerConfig = {}): MCPTracker {
   return new MCPTracker(config);
 }

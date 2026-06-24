@@ -1,7 +1,7 @@
 export type MCPEventType = 'invocation' | 'success' | 'failure';
 
 export interface MCPTrackerConfig {
-  apiKey: string;
+  apiKey?: string;           // Default: process.env.METATUNER_API_KEY
   endpoint?: string;        // Default: Supabase function URL
   timeout?: number;         // Default: 5000ms
   retries?: number;         // Default: 3
@@ -210,4 +210,144 @@ export interface WrapOptions<TParams = any, TResult = any, TMeta = any> {
 export interface TrackingResult {
   success: boolean;
   error?: Error;
+}
+
+// ============================================================================
+// MCP SDK Instrumentation Types
+// ============================================================================
+
+/**
+ * The set of MCP protocol methods that are tracked by default.
+ * These correspond to the JSON-RPC method names used by the MCP protocol.
+ */
+export type MCPMethod =
+  | 'tools/call'
+  | 'resources/read'
+  | 'prompts/get'
+  | 'tools/list'
+  | 'resources/list'
+  | 'prompts/list'
+  | 'completion/complete';
+
+/**
+ * Structural representation of a JSON-RPC MCP request.
+ * Defined structurally so we never import from the SDK at the module level.
+ */
+export interface MCPRawRequest {
+  method: string;
+  params?: {
+    name?: string;
+    uri?: string;
+    arguments?: Record<string, unknown>;
+    ref?: { type: string; name?: string; uri?: string };
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * The raw handler function signature as defined by the MCP protocol.
+ */
+export type MCPRawHandler = (
+  request: MCPRawRequest,
+  ctx: unknown,
+) => unknown | Promise<unknown>;
+
+/**
+ * A metadata extractor for a specific MCP request.
+ * Receives the raw JSON-RPC request object and returns partial metadata.
+ */
+export type MCPRequestMetadataExtractor = (
+  request: MCPRawRequest,
+) => MCPMetadata | undefined;
+
+/**
+ * A metadata extractor for a specific MCP response.
+ * Receives the raw response and the request for correlation.
+ */
+export type MCPResponseMetadataExtractor = (
+  response: unknown,
+  request: MCPRawRequest,
+) => MCPMetadata | undefined;
+
+/**
+ * A metadata extractor for an MCP error.
+ */
+export type MCPErrorMetadataExtractor = (
+  error: Error,
+  request: MCPRawRequest,
+) => MCPMetadata | undefined;
+
+/**
+ * Per-tool (or per-resource, per-prompt) tracking override.
+ * Keyed by the specific name (tool name, resource URI pattern, prompt name).
+ */
+export interface MCPHandlerOverride {
+  /** Custom invocation metadata extractor for this specific handler */
+  getMetadata?: MCPRequestMetadataExtractor;
+  /** Custom output metadata extractor for this specific handler */
+  getOutputMetadata?: MCPResponseMetadataExtractor;
+  /** Custom error metadata extractor for this specific handler */
+  getErrorMetadata?: MCPErrorMetadataExtractor;
+  /** Override whether invocation is tracked for this handler (default: true) */
+  trackInvocation?: boolean;
+}
+
+/**
+ * Configuration for the instrument() and createInstrumentedServer() APIs.
+ */
+export interface InstrumentOptions {
+  /**
+   * MCP methods to track. Defaults to all 7 standard methods.
+   * Override to restrict tracking to specific methods.
+   */
+  methods?: MCPMethod[];
+
+  /**
+   * Tool/resource/prompt names to exclude from tracking entirely.
+   * Matched against the resolved event name (tool name, URI, prompt name).
+   */
+  exclude?: string[];
+
+  /**
+   * Per-handler overrides for specific tools, resources, or prompts.
+   * Keys are the handler names (tool name, resource URI, prompt name).
+   */
+  overrides?: Record<string, MCPHandlerOverride>;
+
+  /**
+   * Global metadata extractor applied to ALL requests before per-handler
+   * extractors. Results are merged (per-handler values take precedence).
+   * Useful for extracting session IDs or user context from every request.
+   */
+  getGlobalMetadata?: MCPRequestMetadataExtractor;
+}
+
+/**
+ * Structural interface for the MCP Server instance (v1 and v2 inner server).
+ * Defined structurally to avoid a hard import of the SDK.
+ */
+export interface MCPServerLike {
+  setRequestHandler(schema: unknown, handler: MCPRawHandler): void;
+  removeRequestHandler?(method: string): void;
+}
+
+/**
+ * Structural interface for McpServer v2 (has a public `server` property).
+ */
+export interface MCPHighLevelServerLike {
+  server: MCPServerLike;
+}
+
+/**
+ * Either a low-level Server or a high-level McpServer (v2).
+ * instrument() accepts both.
+ */
+export type AnyMCPServer = MCPServerLike | MCPHighLevelServerLike;
+
+/**
+ * Result of instrument() - allows cleanup (unpatching) if needed.
+ */
+export interface InstrumentResult {
+  /** Restore the original setRequestHandler. Idempotent. */
+  uninstrument(): void;
 }
